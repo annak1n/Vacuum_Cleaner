@@ -1,0 +1,55 @@
+[editor]
+line_wrapping=false
+line_break_column=72
+auto_continue_multiline=true
+
+[file_prefs]
+final_new_line=true
+ensure_convert_new_lines=false
+strip_trailing_spaces=false
+replace_tabs=false
+
+[indentation]
+indent_width=4
+indent_type=1
+indent_hard_tab_width=8
+detect_indent=false
+detect_indent_width=false
+indent_mode=2
+
+[project]
+name=vysavac
+base_path=/home/matej/Files/Projects/Arduino/vysavac
+description=
+file_patterns=
+
+[long line marker]
+long_line_behaviour=1
+long_line_column=72
+
+[files]
+current_page=0
+FILE_NAME_0=1842;C++;0;EUTF-8;1;1;0;%2Fhome%2Fmatej%2FFiles%2FProjects%2FArduino%2Fvysavac%2Fmain.cpp;0;4
+FILE_NAME_1=264;C;0;EUTF-8;1;1;0;%2Fusr%2Fshare%2Farduino%2Fhardware%2Farduino%2Fcores%2Farduino%2FArduino.h;0;4
+
+[VTE]
+last_dir=/home/matej
+
+[debugger]
+target=
+debugger=
+arguments=
+envvar_count=0
+watches_count=0
+breaks_count=0
+
+[build-menu]
+NF_03_LB=
+NF_03_CM=
+NF_03_WD=
+NF_02_LB=Make _Object
+NF_02_CM=make upload
+NF_02_WD=
+NF_01_LB=Make Custom _Target...
+NF_01_CM=
+NF_01_WD=
