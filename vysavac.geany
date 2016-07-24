@@ -29,8 +29,7 @@ long_line_column=72
 
 [files]
 current_page=0
-FILE_NAME_0=1842;C++;0;EUTF-8;1;1;0;%2Fhome%2Fmatej%2FFiles%2FProjects%2FArduino%2Fvysavac%2Fmain.cpp;0;4
-FILE_NAME_1=264;C;0;EUTF-8;1;1;0;%2Fusr%2Fshare%2Farduino%2Fhardware%2Farduino%2Fcores%2Farduino%2FArduino.h;0;4
+FILE_NAME_0=326;C;0;EUTF-8;1;1;0;%2Fusr%2Fshare%2Farduino%2Fhardware%2Farduino%2Fcores%2Farduino%2FArduino.h;0;4
 
 [VTE]
 last_dir=/home/matej
