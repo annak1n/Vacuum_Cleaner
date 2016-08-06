@@ -1,14 +1,10 @@
 
 #include <Arduino.h>
 
-const int DEBUG = 1;
+#define NO_ERROR 0
+#define TURN_ERROR 1;
 
-int digital_read(uint8_t pin)
-{
-	int value = digitalRead(pin);
-	delayMicroseconds(50);
-	return value;
-}
+const int DEBUG = 1;
 
 void debug_print(const char* var_name, int var)
 {
@@ -19,64 +15,53 @@ void debug_print(const char* var_name, int var)
 }
 
 class Motor {
-	const int _FORWARDS;
-	const int _BACKWARDS;
-	const int _NONE;
-	const int _ctrl_pin_1;
-	const int _ctrl_pin_2;
-	const int _speed_pin;
-	int _direction;
-	
+	const int controlPin1;
+	const int controlPin2;
+	const int speedPin;
+	const int ZERO_SPEED;
 public:
-	Motor(const int ctrl_pin_1,    // the order of control pins has to
-		  const int ctrl_pin_2,    // be tested if it suits directions
-		  const int speed_pin_pwm) // pin with pulse width modulation 
+	/* the order of control pins has to be tested if it suits 
+	 * direction
+	 */
+	Motor(const int controlPin1,
+		  const int controlPin2,
+		  const int speedPinWithPWM) // PWM = Pulse Width Modulation
 		  :
-		  _FORWARDS(1),
-		  _BACKWARDS(-1),
-		  _NONE(0),
-		  _ctrl_pin_1(ctrl_pin_1),
-		  _ctrl_pin_2(ctrl_pin_2),
-		  _speed_pin(speed_pin_pwm),
-		  _direction(_NONE)
+		  controlPin1(controlPin1),
+		  controlPin2(controlPin2),
+		  speedPin(speedPinWithPWM),
+		  ZERO_SPEED(0)
 	{ 
-		pinMode(_ctrl_pin_1, OUTPUT);
-		pinMode(_ctrl_pin_2, OUTPUT);
-		pinMode(_speed_pin, OUTPUT);
+		pinMode(controlPin1, OUTPUT);
+		pinMode(controlPin2, OUTPUT);
+		pinMode(speedPin, OUTPUT);
 		
-		digitalWrite(_ctrl_pin_1, LOW);
-		digitalWrite(_ctrl_pin_2, LOW);
-		analogWrite(_speed_pin, 0);
+		digitalWrite(controlPin1, LOW);
+		digitalWrite(controlPin2, LOW);
+		analogWrite(speedPin, ZERO_SPEED);
 	}
 	~Motor() {}
 	
-	void forwards(const int speed_from_0_to_255)
+	void turnClockwise(const int speedFrom0To255)
 	{ 
-		digitalWrite(_ctrl_pin_1, HIGH);
-		digitalWrite(_ctrl_pin_2, LOW);
-		analogWrite(_speed_pin, speed_from_0_to_255);
-		_direction = _FORWARDS;
+		digitalWrite(controlPin1, HIGH);
+		digitalWrite(controlPin2, LOW);
+		analogWrite(speedPin, speedFrom0To255);
 	}
 	
-	void backwards(const int speed_from_0_to_255)
+	void turnCounterClockwise(const int speedFrom0To255)
 	{ 
-		digitalWrite(_ctrl_pin_1, LOW);
-		digitalWrite(_ctrl_pin_2, HIGH);
-		analogWrite(_speed_pin, speed_from_0_to_255);
-		_direction = _BACKWARDS;
+		digitalWrite(controlPin1, LOW);
+		digitalWrite(controlPin2, HIGH);
+		analogWrite(speedPin, speedFrom0To255);
 	}
 	
 	void stop()
 	{
-		analogWrite(_speed_pin, 0);
-		digitalWrite(_ctrl_pin_1, LOW);
-		digitalWrite(_ctrl_pin_2, LOW);
-		_direction = _NONE;
-	}
-	
-	int direction()
-	{
-		return _direction;
+		analogWrite(speedPin, ZERO_SPEED);
+		digitalWrite(controlPin1, LOW);
+		digitalWrite(controlPin2, LOW);
+
 	}
 };
 
@@ -103,274 +88,207 @@ public:
 
 class Rudder { // Rudder = Kormidlo
 
-	const int _RIGHT;
-	const int _HALF_RIGHT;
-	const int _CENTER;
-	const int _HALF_LEFT;
-	const int _LEFT;
-	const int _SLOW_SPEED;
-	const int _FAST_SPEED;
-	Motor _motor;
-	const int _ctrl_pin_brown;
-	const int _ctrl_pin_green;
-	int _last_position;
+	const int RIGHT;
+	const int HALF_RIGHT;
+	const int STRAIGHT;
+	const int HALF_LEFT;
+	const int LEFT;
+	const int LEFT_OR_RIGHT;
+	const int SLOW_SPEED;
+	const int FAST_SPEED;
+	const unsigned long MAX_TURN_TIME;
+	Motor motor;
+	const int controlPinBrownWire;
+	const int controlPinGreenWire;
+	int position;
 		
 public:
-	Rudder (const int motor_ctrl_pin_1, 
-		    const int motor_ctrl_pin_2, 
-		    const int motor_speed_pin_pwm,
-		    const int steer_ctrl_pin_brown,
-		    const int steer_ctrl_pin_green)
+	Rudder (const int motorControlPin1, 
+		    const int motorControlPin2, 
+		    const int motorSpeedPinWithPWM,
+		    const int steerControlPinBrownWire,
+		    const int steerControlPinGreenWire)
 		    :
-		    _RIGHT(2),
-		    _HALF_RIGHT(1),
-		    _CENTER(0),
-		    _HALF_LEFT(-1),
-		    _LEFT(-2),
-		    _SLOW_SPEED(100),
-			_FAST_SPEED(255),
-		    _motor(motor_ctrl_pin_1, 
-				   motor_ctrl_pin_2, 
-				   motor_speed_pin_pwm),
-			_ctrl_pin_brown(steer_ctrl_pin_brown),
-			_ctrl_pin_green(steer_ctrl_pin_green),
-			_last_position(_CENTER)
+		    RIGHT(2),
+		    HALF_RIGHT(1),
+		    STRAIGHT(0),
+		    HALF_LEFT(-1),
+		    LEFT(-2),
+		    LEFT_OR_RIGHT(3),
+		    SLOW_SPEED(100),
+			FAST_SPEED(255),
+			MAX_TURN_TIME(2000),
+		    motor(motorControlPin1, 
+				   motorControlPin2, 
+				   motorSpeedPinWithPWM),
+			controlPinBrownWire(steerControlPinBrownWire),
+			controlPinGreenWire(steerControlPinGreenWire),
+			position(STRAIGHT)
 	{
-		pinMode(_ctrl_pin_brown, INPUT);
-		pinMode(_ctrl_pin_green, INPUT);
+		pinMode(controlPinBrownWire, INPUT);
+		pinMode(controlPinGreenWire, INPUT);
 	}
 	~Rudder() {}
 	
-	int go_left()
+	int turnToLeft()
 	{
-		
+		if (position == LEFT) return NO_ERROR;
+		int errorCode = NO_ERROR;
+		if (position == RIGHT) errorCode = this->turnToStraight();
+		debug_print("turn to straight error code ", errorCode);
+		if (errorCode) return errorCode;
+		errorCode = this->turnLeftFromStraight();
+		debug_print("turn to left error code ", errorCode);
+		if (errorCode) return errorCode;
+		position = LEFT;
+		return NO_ERROR;
 	}
 	
-	int go_right()
+	int turnToRight()
 	{
-		
+		if (position == RIGHT) return NO_ERROR;
+		int errorCode = NO_ERROR;
+		if (position == LEFT) errorCode = this->turnToStraight();
+		if (errorCode) return errorCode;
+		errorCode = this->turnRightFromStraight();
+		if (errorCode) return errorCode;
+		position = RIGHT;
+		return NO_ERROR;
 	}
 	
-	int go_straight()
+	int turnToStraight()
 	{
-		int position = this->get_position();
-		while (position != _CENTER) {
-			switch (position) {
-				case 2: // _RIGHT
-				case 1: // _HALF_RIGHT
-					this->turn_packa_left(_SLOW_SPEED);
-					break;
-				case -1: // _HALF_LEFT
-				case -2: // _LEFT
-					this->turn_packa_right(_SLOW_SPEED);
-					break;
+		if (position == STRAIGHT) return NO_ERROR;
+		int errorCode = NO_ERROR;
+		if (position == LEFT) errorCode = this->turnToStraightFromLeft();
+		if (position == RIGHT) errorCode = this->turnToStraightFromRight();
+		if (errorCode) return errorCode;
+		position = STRAIGHT;
+		return NO_ERROR;		
+	}
+	
+	int getPosition() 
+	{
+		int valueOnBrownWire = digitalRead(controlPinBrownWire);
+		delay(1);
+		int valueOnGreenWire = digitalRead(controlPinGreenWire);
+		delay(1);
+		if (!valueOnBrownWire) {
+			if (!valueOnGreenWire) {
+				return STRAIGHT;
+			} else {
+				return HALF_RIGHT;
 			}
-			position = this->get_position();
+		} else {
+			if (!valueOnGreenWire) {
+				return HALF_LEFT;
+			} else {
+				return LEFT_OR_RIGHT;
+			}
 		}
-		_motor.stop();
 	}
 
 private:
 
-	void turn_packa_left(const int speed) // speed in [0..255]
+	int turnLeftFromStraight()
 	{
-		_motor.backwards(speed);
-	}	
-	
-	void turn_packa_right(const int speed) // speed in [0..255]
-	{
-		_motor.forwards(speed);
-	}	
-	
-//~ private:
-	int turn_right_from_center()
-	{
-		debug_print("Position at the start: ",_position);
-		debug_print("Brown pin at start: ", digital_read(_ctrl_pin_brown));
-		debug_print("Green pin at start: ", digital_read(_ctrl_pin_green));
-		if (!this->is_in_error_state() && _position == _CENTER) {
-			_motor.forwards(255);
-			const int start_t = millis();
-			while (millis() - start_t < 5000) {
-				debug_print("Brown pin ",digital_read(_ctrl_pin_brown));
-				if (digital_read(_ctrl_pin_brown)) {
-					_motor.stop();
-					break;
-				}
+		const unsigned long motorStartTime = millis();
+		motor.turnClockwise(FAST_SPEED);
+		while (this->getPosition() != LEFT_OR_RIGHT) {
+			if (millis() - motorStartTime > MAX_TURN_TIME) {
+				motor.stop();
+				return TURN_ERROR;
 			}
-			_motor.stop();
-			debug_print("Position in the middle: ", _position);
-			debug_print("Brown pin at the end: ", digital_read(_ctrl_pin_brown));
-			debug_print("Green pin at the end: ", digital_read(_ctrl_pin_green));
-			if (!digital_read(_ctrl_pin_brown) || 
-				!digital_read(_ctrl_pin_green)) {
-				return 1; // error - rudder didn't get to the position
-			} else {
-				_position = _RIGHT;
-				debug_print("Position at the end: ", _position);
-				return 0;
-			}			
-		} else {
-			return 1;
 		}
+		delay(20);
+		motor.stop();
+		position = LEFT;
+		return NO_ERROR;			
+	}
+
+	int turnRightFromStraight() 
+	{
+		const unsigned long motorStartTime = millis();
+		motor.turnCounterClockwise(FAST_SPEED);
+		while (this->getPosition() != LEFT_OR_RIGHT) {
+			if (millis() - motorStartTime > MAX_TURN_TIME) {
+				motor.stop();
+				return TURN_ERROR;
+			}
+		}
+		delay(20);
+		motor.stop();
+		position = RIGHT;
+		return NO_ERROR;			
+	}
+
+	int turnToStraightFromLeft() 
+	{
+		const unsigned long motorStartTime = millis();
+		motor.turnCounterClockwise(SLOW_SPEED);
+		while (this->getPosition() != STRAIGHT) {
+			if (millis() - motorStartTime > MAX_TURN_TIME) {
+				motor.stop();
+				return TURN_ERROR;
+			}
+		}
+		motor.stop();
+		position = STRAIGHT;
+		return NO_ERROR;			
 	}
 	
-	int turn_left_from_center()
+	int turnToStraightFromRight()
 	{
-		debug_print("Position at the start: ",_position);
-		debug_print("Brown pin at start: ", digital_read(_ctrl_pin_brown));
-		debug_print("Green pin at start: ", digital_read(_ctrl_pin_green));
-		if (!this->is_in_error_state() && _position == _CENTER) {
-			_motor.backwards(255);
-			const int start_t = millis();
-			while (millis() - start_t < 5000) {
-				debug_print("Greem pin ",digital_read(_ctrl_pin_green));
-				if (digital_read(_ctrl_pin_green)) {
-					_motor.stop();
-					break;
-				}
+		const unsigned long motorStartTime = millis();
+		motor.turnClockwise(SLOW_SPEED);
+		while (this->getPosition() != STRAIGHT) {
+			if (millis() - motorStartTime > MAX_TURN_TIME) {
+				motor.stop();
+				return TURN_ERROR;
 			}
-			_motor.stop();
-			debug_print("Position in the middle: ", _position);
-			debug_print("Brown pin at the end: ", digital_read(_ctrl_pin_brown));
-			debug_print("Green pin at the end: ", digital_read(_ctrl_pin_green));
-			if (!digital_read(_ctrl_pin_brown) || 
-				!digital_read(_ctrl_pin_green)) {
-				return 1; // error - rudder didn't get to the position
-			} else {
-				_position = _LEFT;
-				debug_print("Position at the end: ", _position);
-				return 0;
-			}			
-		} else {
-			return 1;
 		}
-	}
-	
-	int return_to_center_from_left()
-	{
-		debug_print("Position at the start: ",_position);
-		debug_print("Brown pin at start: ", digital_read(_ctrl_pin_brown));
-		debug_print("Green pin at start: ", digital_read(_ctrl_pin_green));
-		if (!this->is_in_error_state() && _position == _LEFT) {
-			_motor.forwards(100);
-			const int start_t = millis();
-			while (millis() - start_t < 1000) {
-				debug_print("Brown pin ",digital_read(_ctrl_pin_brown));
-				if (!digital_read(_ctrl_pin_brown)) {
-					_motor.stop();
-					break;
-				}
-			}
-			_motor.stop();
-			debug_print("Position in the middle: ", _position);
-			debug_print("Brown pin at the end: ", digital_read(_ctrl_pin_brown));
-			debug_print("Green pin at the end: ", digital_read(_ctrl_pin_green));
-			if (digital_read(_ctrl_pin_brown) && 
-				digital_read(_ctrl_pin_green)) {
-				return 1; // error - rudder didn't get to the position
-			} else if (!digital_read(_ctrl_pin_brown) && 
-					   digital_read(_ctrl_pin_green)) {
-				debug_print("Went too far: ", 1);
-				_motor.backwards(100);
-				const int start_t = millis();
-				while (millis() - start_t < 1000) {
-					debug_print("Green pin correction ",digital_read(_ctrl_pin_green));
-					if (!digital_read(_ctrl_pin_green)) {
-						_motor.stop();
-						break;
-					}
-				}
-				_motor.stop();	
-				if (digital_read(_ctrl_pin_brown) || 
-					digital_read(_ctrl_pin_green)) {
-					debug_print("Even after correction not successful ", 1);
-					return 1; // error - rudder didn't get to the position	
-				} else {
-					_position = _CENTER;
-					debug_print("Position at the end: ", _position);
-					return 0;		
-				}					
-			} else {
-				_position = _CENTER;
-				debug_print("Position at the end: ", _position);
-				return 0;
-			}			
-		} else {
-			return 1;
-		}
+		motor.stop();
+		position = STRAIGHT;
+		return NO_ERROR;		
 	}
 	
 
-	
-	int return_to_center_from_right()
-	{
-		if (!this->is_in_error_state() && _position == _RIGHT) {
-			_motor.backwards(100);
-			const int start_t = millis();
-			while (millis() - start_t < 1000) {
-				if (!digital_read(_ctrl_pin_green)) {
-					_motor.stop();
-					break;
-				}
-			}
-			_motor.stop();
-			if (digital_read(_ctrl_pin_brown) || 
-				digital_read(_ctrl_pin_green)) {
-				return 1; // error - rudder didn't get to the position
-			} else {
-				_position = _CENTER;
-				return 0;
-			}			
-		} else {
-			return 1;
-		}
-	}
-	
-	
-	
-	int is_in_error_state()
-	{
-		if (_position == _CENTER) {
-			if (!digital_read(_ctrl_pin_brown) && 
-				!digital_read(_ctrl_pin_green)) return 0;
-			else return 1;
-		} else if (_position == _RIGHT || _position == _LEFT) {		
-			if (digital_read(_ctrl_pin_brown) && 
-				digital_read(_ctrl_pin_green)) return 0;
-			else return 1;
-		} else {
-				return 1;
-		}
-	}
-	
-		
-	
-	int get_position() {
-		if (!digital_read(_ctrl_pin_brown) && 
-			!digital_read(_ctrl_pin_green)) {
-			_last_position = _CENTER;
-			return _CENTER;
-		} else if (!digital_read(_ctrl_pin_brown) && 
-				 digital_read(_ctrl_pin_green)) { 
-			_last_position = _HALF_RIGHT;
-			return _HALF_RIGHT;
-		} else if (digital_read(_ctrl_pin_brown) && 
-				 !digital_read(_ctrl_pin_green)) {	 
-			_last_position = _HALF_LEFT;
-			return _HALF_LEFT;
-		}
-		if (!digital_read(_ctrl_pin_brown) && 
-			!digital_read(_ctrl_pin_green)) return _CENTER;
-		else if 
-		return _position;
-	}
-		
 };
 
-int do_x_times = 1;
+class Drive {
+	Motor motor;
+public:
+	/* the order of control pins has to be tested if it suits 
+	 * direction
+	 */
+	Drive(const int controlPin1,
+		  const int controlPin2,
+		  const int speedPinWithPWM) // PWM = Pulse Width Modulation
+		  :
+		  motor(controlPin1, controlPin2, speedPinWithPWM) {}
+	~Drive() {}	
+	
+	void goForwards(const int speedFrom0To255)
+	{
+		motor.turnClockwise(speedFrom0To255);
+	}
+	
+	void goBackwards(const int speedFrom0To255)
+	{
+		motor.turnCounterClockwise(speedFrom0To255);
+	}
+	
+	void stop()
+	{
+		motor.stop();
+	}
+	
+};
+
+int doXtimes = 1;
 
 Rudder rudder(2,4,3,5,6);
+Drive drive(7,8,9);
 
 void setup()
 {	
@@ -385,17 +303,33 @@ void setup()
 
 void loop()
 {	
-	if (do_x_times) {
-		Serial.println(rudder.turn_right_from_center());
+	if (doXtimes) {
+		rudder.turnToLeft();
+		drive.goForwards(255);
+		delay(1000);
+		rudder.turnToStraight();
+		drive.stop();
+		delay(1000);
+		rudder.turnToRight();
+		drive.goBackwards(255);
+		delay(1000);
+		drive.stop();
+		rudder.turnToStraight();
+		//~ Serial.println(rudder.turnToLeft());
+		//~ Serial.println(rudder.getPosition());
 		//~ delay(500);
-		Serial.println(rudder.return_to_center_from_right());
+		//~ Serial.println(rudder.turnToStraight());
+		//~ Serial.println(rudder.getPosition());
 		//~ delay(500);
-		Serial.println(rudder.turn_left_from_center());
+		//~ Serial.println(rudder.turnToRight());
+		//~ Serial.println(rudder.getPosition());
 		//~ delay(500);
-		Serial.println(rudder.return_to_center_from_left());
+		//~ Serial.println(rudder.turnToStraight());
+		//~ Serial.println(rudder.getPosition());
 		//~ delay(500);
-		--do_x_times;
+		--doXtimes;
 	} else {
-		
+		//~ Serial.println(rudder.getPosition());
+		//~ delay(100);
 	}
 }
